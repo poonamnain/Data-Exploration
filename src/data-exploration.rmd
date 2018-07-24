@@ -1,0 +1,1070 @@
+# Exploratory data analysis on US predential elections
+
+### By Poonam
+
+================================================================================
+
+
+This is an exploration of 2016 US presidential election donations in the state 
+of California. For this data analysis, I am exoloring the 2016 presidential 
+campaign finance data from Federal Election Commission. The dataset contains 
+financial contribution transaction.
+
+
+Through my analysis, I will attempt to answer the following questions:
+
+- Which candidate received the most money?
+- Which political party received the most contributions?
+- What is the spread of occupation of those donors?
+- I would also see how the money flow happened from begin till end.
+- Did Hillary Clinton receive more money than Donald Trump?
+
+
+```{r Library Packages, message = FALSE, warning = FALSE}
+# Load all of the packages that will be used for analysis
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(gridExtra)
+library(plotly)
+library(ggmap)
+library(maps)
+library(tidyverse)
+```
+
+
+```{r Load_the_Data, message = FALSE, warning = FALSE, include = FALSE, echo = FALSE}
+# Load the Data
+# include=FALSE - No code printed, no result printed
+# echo=FALSE - No code printed, only result printed
+# results = "hide" - Code Printed, No result printed
+getwd()
+list.files()
+setwd("/Users/poonam/Documents/Poonam/DAND/DE-Project3/")
+DF = read_csv('P00000001-CA_test.csv') 
+```
+
+
+Summarise the dataset, and check column names.
+
+
+```{r Dataset Summary Column Names, message = FALSE, warning = FALSE, echo = FALSE}
+# str(DF)  # data of first 10 rows
+# dim(DF)  #number of observations and column count
+summary(DF) #lenght of each column, min,max, median of numeric columns
+colnames(DF)
+```
+
+
+# Univariate Plot Section
+
+From the dataset summary we found that this dataset contains 1304346 
+observations and 18 variables. Let's plot contribution graphs against different 
+variables.
+
+Let's do some basic null checks, before we proceed.
+
+
+```{r null_row_check, message = FALSE, warning = FALSE, echo = FALSE, results="hide"}
+null_rows = which(is.na(DF$contb_receipt_amt), arr.ind=TRUE)
+null_row_count = length(null_rows) 
+print(null_row_count) 
+```
+
+
+There are no null values under contribution amount column. Let's plot a simple 
+histogram.
+
+
+```{r Simple Histogram, message = FALSE, warning = FALSE, echo=FALSE}
+hist(DF$contb_receipt_amt, 
+     main="Histogram for contributions", 
+     breaks=(25), 
+     xlab="Contribution Amount in Dollars",
+     ylab="Number of Contributions",
+     border="Green", 
+     col="Blue",
+     xlim=c(-12000,12000),
+     ylim =c(0, 150000))
+```
+
+
+Plot another detailed contribution histogram.
+
+
+```{r  Bar chart for contributions, message = FALSE, warning = FALSE, echo=FALSE}
+options(scipen = 999)
+plot_cand_contb= ggplot(aes(x=contb_receipt_amt), data=(DF))+
+  geom_histogram(fill='black') + 
+  scale_x_continuous(limits=c(0, 3000), breaks = c(0, 250, 500, 1000, 1500, 
+  2000, 2500, 3000))+ 
+  scale_y_continuous(limits = c(0, 225000),
+                     breaks = c(100000, 200000,300000)) + 
+  labs(title="Contribution Distribution") +
+  xlab("Contribution Amount in Dollars") +
+  ylab("Number of Contributions")
+
+plot_cand_contb
+```
+
+
+This graph also shows that large number of people have contributed below $500. 
+Also there is a significant number of people those who have contributed between 
+2500 and 3000. 
+
+We can see from the above histogram, that there are negative values also in the 
+contribution amount. Let's see if they have any other relevant details. 
+Check their receipt description field.
+
+
+```{r Negative amount desc, message = FALSE, warning = FALSE, echo=FALSE }
+DF_neg_amt_desc <- subset(DF, select=c("cand_nm", "contbr_nm", "contbr_city",       "contbr_occupation", "contb_receipt_amt", "contb_receipt_dt", "receipt_desc", 
+  "memo_text", "election_tp"), DF$contb_receipt_amt <0)
+DF_neg_amt_desc
+
+num_refund_rows <- which(DF_neg_amt_desc$receipt_desc == "Refund")
+refund_row_count = length(num_refund_rows) 
+print(refund_row_count)
+
+unique_receipt_desc <- length(unique(DF_neg_amt_desc$receipt_desc, 
+  incomparables = FALSE, MARGIN = 1, fromLast = FALSE))
+print(unique_receipt_desc)
+```
+
+
+There are lot of records (10,412 out of 16,313), that have receipt description 
+as "Refund". It could be that the contributor changed his mind, and asked for a 
+refund at a later stage. Other 2 categories of description are "Redesignation" 
+and "Reattribution". Let's see how significant is the sum of negative amount
+in total.
+
+
+Lets do some calculation to see the total sum of positive and negative values.
+
+Check number of rows containing positive amount, and number of rows containing 
+negative amount.
+
+
+```{r Positive and Negative Contribution, message = FALSE, warning = FALSE, echo=FALSE, results= "hide"}
+
+pos_row_count = length(which(DF$contb_receipt_amt>=0, arr.ind = TRUE)) 
+print(pos_row_count)
+
+neg_row_count = length(which(DF$contb_receipt_amt < 0, arr.ind = TRUE)) 
+print(neg_row_count)
+```
+
+So out of 1304346 observations, 16313 are with negative amount values.
+
+Lets see how the contribution is done over a period of time.
+We will plot a time series line chart for each party to see trend of 
+contribution received towards begin or end of the election time.
+
+Let's do a basic null check on date before we proceed
+
+
+```{r Null row check for date, message = FALSE, warning = FALSE, echo=FALSE}
+null_rows = which(is.na(DF$contb_receipt_dt), arr.ind=TRUE)
+null_row_count = length(null_rows)
+print(null_row_count)
+```
+
+
+There are no rows without date field.
+Check how many unique date records are present.
+
+
+```{r Unique dates, message = FALSE, warning = FALSE}
+count_of_contb_dt <- length(unique(DF$contb_receipt_dt, incomparables = FALSE, 
+  MARGIN = 1, fromLast = FALSE))
+print(count_of_contb_dt)
+```
+
+
+So the contribution distribution is spread across more than 2 years. 
+Let's group the contribution by month.
+
+
+```{r Add Political Party Column, message = FALSE, warning = FALSE, echo=FALSE}
+DF["Political_Party"] <- NA
+DF$Political_Party <- ifelse(DF$cand_nm == "Clinton, Hillary Rodham", 
+                                            "Democratic_Party",
+                       ifelse(DF$cand_nm == "Sanders, Bernard", 
+                                             "Democratic_Party",
+                         ifelse(DF$cand_nm == "Lessig, Lawrence", 
+                                             "Democratic_Party",
+                           ifelse(DF$cand_nm == "Malley, Martin Joseph", 
+                                              "Democratic_Party",
+                             ifelse(DF$cand_nm == "Webb, James Henry Jr", 
+                                              "Democratic_Party",
+                               ifelse(DF$cand_nm == "Johnson, Gary", 
+                                              "Libretarian_Party",
+                                 ifelse(DF$cand_nm == "Stein, Jill", 
+                                              "Green_Party_of_USA", 
+                                              "Republic_Party")))))))
+```
+
+
+
+```{r Date coversion, message = FALSE, warning = FALSE, echo = FALSE, results= "hide"}
+DF$Month_Yr <- format(as.Date(DF$contb_receipt_dt, "%d-%b-%y"), "%b-%Y")
+DF$yyyymm <- format(as.Date(DF$contb_receipt_dt, "%d-%b-%y"), "%Y%m")
+DF
+
+DF_sum_by_month <- subset(DF, select=c("Political_Party", "contb_receipt_amt", "Month_Yr","yyyymm"))
+DF_sum_by_month
+
+DF_sum_by_month <- arrange(DF_sum_by_month, yyyymm)  
+DF_sum_by_month
+
+DF_sum_by_month <- DF %>% 
+  group_by(yyyymm) %>% 
+  summarise(sum_contb_by_month = sum(contb_receipt_amt, na.rm=TRUE),
+  mean_occu = mean(contb_receipt_amt),
+  n = n())
+
+DF_sum_by_month$Month_Yr <- as.Date(paste0(as.character(DF_sum_by_month$yyyymm),
+  '01'), format='%Y%m%d')
+
+DF_sum_by_month$Month_Yr <- format(as.Date(DF_sum_by_month$Month_Yr, "%Y%m%d"), 
+  "%b-%Y")
+
+DF_sum_by_month_head <- head(arrange(DF_sum_by_month, desc(sum_contb_by_month)), n=20)
+DF_sum_by_month_head
+```
+
+
+The top 10 dates of contribution show Dec 2015 being the peak month of 
+contribution, followed by Sep 2015.
+
+Let's visualize through a graph. 
+
+
+```{r Plot by Date, message = FALSE, warning = FALSE, echo= FALSE }
+
+plot_contb_by_month <- ggplot(data = DF_sum_by_month_head, 
+  aes(x = DF_sum_by_month_head$yyyymm, 
+  y = (DF_sum_by_month_head$sum_contb_by_month/1000))) +
+  geom_bar(stat="identity")+
+  geom_line() +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+  xlab('Date in yyyymm format') +
+  ylab('Contribution Amount in Dollars (Thousands)') +
+  ggtitle('Contribution by Month') +
+  scale_y_continuous(limits = c(0, 20000))
+
+plot_contb_by_month
+```
+
+
+# Univariate Analysis
+
+
+In the Univariate section we explored the "Contribution Amount" variable. We saw
+that contribution was mostly between the range of 0 to 500 Dollar. Also 
+there was a slight peak at 1000 and 2700 dollar. There were mostly positive 
+contribution values, but there were some observations with negative values too. 
+The negative values had description as Refund, Reattribution and Redesignation. 
+For the purpose of current exploration the total amount is calculated as sum of 
+positive amount minus the sum of negative amount.
+
+There are 1304346 contributions and 18 variables. The variables that interest 
+to me and I have used are:
+
+cand_nm: Candidate Name
+contb_receipt_amt: Contribution Amount
+contbr_occupation: Contributor Occupation
+contbr_city: Contributor City
+contb_receipt_dt: Contribution date
+election_tp: Type of election (Primary, General)
+
+Othere observations:
+
+Most people contribute small amount of money. The median contribution amount is 
+$27, mean contribution amount is $116. The amount of contribution is highest in 
+Aug-Sep 2016, that is just before the election.
+
+From the above graph we see that contribution was maximum between Aug 2016 till 
+Oct 2016, just before the election time frame. Also we can note that the 
+contribution started to pick from Apr 2015.
+
+
+# Bivariate Plot Section
+
+
+Next we will see how this total "contribution amount" is distributed w.r.t other 
+factors like  candidates, political parties, contributor's occupation and 
+contributor's city.
+
+
+Get the Unique candidate names to see how many candidates stood up for election.
+Summarise the total contribution amount for each candidate.
+
+
+```{r Number of unique candidates, message = FALSE, warning = FALSE}
+count_of_nm <- length(unique(DF$cand_nm, incomparables = FALSE, MARGIN = 1, 
+  fromLast = FALSE))
+print(count_of_nm)
+print(unique(DF$cand_nm)) 
+```
+
+
+We see that there are 25 unique candidtes.
+Plot a bar chart to see how much contribution amount is received per candidate.
+
+
+```{r Candidate wise contribution, message = FALSE, warning = FALSE}
+DF_cand_dist <- DF %>% 
+  group_by(cand_nm) %>% 
+  summarise(candidate_amt = sum(contb_receipt_amt, na.rm=TRUE),
+            n= n())
+DF_cand_dist
+
+DF_cand_dist <- head(arrange(DF_cand_dist, desc(candidate_amt)), n= 10)
+```
+
+
+Let's plot the graph.
+
+
+```{r Plot by Candidate, message = FALSE, warning = FALSE, echo = FALSE}
+plot_cand_dist <- ggplot(DF_cand_dist, aes(x=DF_cand_dist$cand_nm, 
+  y = candidate_amt/1000)) +
+  geom_col(inherit.aes = TRUE)+
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+  ylab("Contribution Amount in Dollars (Thousands)") +
+  xlab("Candidate Names")+
+  ggtitle('Contribution Received by Candidate')
+plot_cand_dist
+```
+
+
+
+Check political party wise contribution.
+
+
+Draw pie chart to see distribution of contribution amount received by each 
+political party.
+
+First sum the contribution party wise.
+
+
+```{r Political Party Contribution, message = FALSE, warning = FALSE}
+DF_party_dist <- DF %>% 
+  group_by(Political_Party) %>% 
+  summarise(party_amt = sum(contb_receipt_amt, na.rm=TRUE))
+
+head(DF_party_dist)
+```
+
+
+```{r Pie chart, message = FALSE, warning = FALSE, echo = FALSE, results="hide"}
+DF_dem_new = subset(DF, Political_Party == "Democratic_Party")
+dem_sum = sum(DF_dem_new$contb_receipt_amt)
+print(dem_sum)
+
+DF_lib_new = subset(DF, Political_Party == "Libretarian_Party")
+lib_sum = sum(DF_lib_new$contb_receipt_amt)
+print(lib_sum)
+
+DF_gpusa_new = subset(DF, Political_Party == "Green_Party_of_USA")
+gpusa_sum = sum(DF_gpusa_new$contb_receipt_amt)
+print(gpusa_sum)
+
+DF_rep_new = subset(DF, Political_Party == "Republic_Party")
+rep_sum = sum(DF_rep_new$contb_receipt_amt)
+print(rep_sum)
+
+slices = c(sum(DF_dem_new$contb_receipt_amt), 
+           sum(DF_lib_new$contb_receipt_amt),
+           sum(DF_rep_new$contb_receipt_amt),
+           sum(DF_gpusa_new$contb_receipt_amt)
+           )
+colors <- c("blue","white","red","green")
+slices_labels <- round(slices/sum(slices) * 100, 1)
+slices_labels <- paste(slices_labels, "%", sep="")
+
+pie(slices, main="Political Party wise Contribution", col=colors, 
+  labels=slices_labels, cex=0.8)
+legend("topright", c("Democratic Party","Libretarian Party","Republic Party", 
+  "Green Party of USA"), cex=0.8, fill=colors)
+```
+
+
+Lets see how many election types are there.
+
+
+```{r Contribution per election type, message = FALSE, warning = FALSE }
+count_of_election_tp <- length(unique(DF$election_tp, incomparables= FALSE,
+  MARGIN = 1, fromLast = FALSE))
+print(count_of_election_tp)
+print(unique(DF$election_tp))
+```
+
+
+We see that there are 5 unique election types. Let's see contribution per 
+election type.
+
+
+```{r Election type wise contribution, message = FALSE, warning = FALSE}
+DF_election_tp <- DF %>% 
+  group_by(election_tp) %>% 
+  summarise(sum_election_tp = sum(contb_receipt_amt, na.rm=TRUE),
+                              mean_election_tp = mean(contb_receipt_amt), 
+                              n = n())
+DF_election_tp <- head(arrange(DF_election_tp,desc(sum_election_tp)))
+head(DF_election_tp)
+```
+
+
+```{r Election Type Plot, message = FALSE, warning = FALSE, echo=FALSE}
+plot_election_tp <- ggplot(DF_election_tp, aes(x=DF_election_tp$election_tp, y =                  sum_election_tp/1000)) +
+  geom_bar(stat="identity")+
+  geom_col(inherit.aes = TRUE)+
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+  ylab("Contribution Amount in Dollars (Thousands)") +
+  xlab("Type of Election")+
+  ggtitle('Contribution by Election Type')
+
+plot_election_tp
+```
+
+
+Most of the contribution is for election type P2016. This could be the Primary 
+election donation. The next type of election that has received most 
+contributions is G2016, this could be the general elections. Source of 
+information wikipedia website.
+
+
+```{r Candidate and election type,  message = FALSE, warning = FALSE, echo=FALSE}
+DF_election_tp_p2016 <- subset(DF, select=c("cand_nm", "contbr_nm", "contbr_city",       "contbr_occupation", "contb_receipt_amt", "contb_receipt_dt", "receipt_desc", 
+  "memo_text", "election_tp"), DF$election_tp == "P2016")
+DF_election_tp_p2016
+
+DF_election_tp_p2016_grp<- DF_election_tp_p2016 %>% 
+  group_by(cand_nm) %>% 
+  summarise(sum_election_tp_p2016 = sum(contb_receipt_amt, na.rm=TRUE),
+                              mean_election_tp = mean(contb_receipt_amt), 
+                              n = n())
+DF_election_tp_p2016_grp <- head(arrange(DF_election_tp_p2016_grp
+                                         ,desc(sum_election_tp_p2016)))
+DF_election_tp_p2016_grp
+summary(DF_election_tp_p2016_grp)
+```
+
+
+```{r P2016 contribution distribution, message = FALSE, warning = FALSE, echo=FALSE}
+plot_election_tp_p2016_grp <- ggplot(DF_election_tp_p2016_grp, 
+  aes(x=DF_election_tp_p2016_grp$cand_nm, y = sum_election_tp_p2016/1000)) +
+  geom_bar(stat="identity")+
+  geom_col(inherit.aes = TRUE)+
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+  ylab("Pri Election Amount in Dollars (Thousands)") +
+  xlab("Candidate Name")+
+  ggtitle('Contribution Received by Candidates for P2016')
+
+plot_election_tp_p2016_grp
+```
+
+
+Above is a graph for primary election contribution amount by candidates. Hillary
+got most contribution during the primary elections as compared to other 
+candidates, followed by Bernard Sanders. The mean contribution amount is $318.1 
+for primary elections, this is more than the mean of total contribution amount 
+that is $116.
+
+
+```{r Number of unique occupations, message = FALSE, warning = FALSE}
+count_of_occupation <- length(unique(DF$contbr_occupation, incomparables= FALSE,
+  MARGIN = 1, fromLast = FALSE))
+print(count_of_occupation)
+```
+
+
+We see that there are 28616 unique occupations of the contributors. People from 
+so many occupations participated in contributing to the election. It would be 
+difficult to see contribution spread against all of the occupation. 
+Lets pick top 10 occupation categories.
+
+
+```{r Occupation wise contribution, message = FALSE, warning = FALSE}
+DF_occu_dist <- DF %>% 
+  group_by(contbr_occupation) %>% 
+  summarise(sum_occup = sum(contb_receipt_amt, na.rm=TRUE),
+                              mean_occu = mean(contb_receipt_amt), 
+                              n = n())
+DF_occu_dist <- head(arrange(DF_occu_dist,desc(sum_occup)), n = 10)
+DF_occu_dist
+summary(DF_occu_dist)
+```
+
+
+From the summary we see that the occupation categories "ATTORNEY", "HOMEMAKER", 
+"CEO", "PRESIDENT", "LAWYER" have the higher mean of contribution than compared 
+to the mean of total contributing amount from all categories together.
+
+Category "PRESIDENT" has the maximum mean of contributing amount.
+Category "NOT EMPLOYED" has the minimum mean of contributing amount.
+
+
+```{r Occupation Plot, message = FALSE, warning = FALSE, echo=FALSE}
+plot_occu_dist <- ggplot(DF_occu_dist, aes(x=DF_occu_dist$contbr_occupation, y =                  sum_occup/1000)) +
+  geom_bar(stat="identity")+
+  geom_col(inherit.aes = TRUE)+
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+  ylab("Contribution Amount in Dollars (Thousands)") +
+  xlab("Contributor's Occupation")+
+  ggtitle('Contribution by Occupation')
+  
+plot_occu_dist
+```
+
+
+This is an amazing graph. It shows retired category of people contributing most 
+to the election funds.
+
+Check city wise contribution, and then find out top 10 contributing cities.
+Below is graph for top 10 contributing cities.
+
+
+```{r Count of Unique cities, message = FALSE, warning = FALSE}
+count_of_city <- length(unique(DF$contbr_city, incomparables = FALSE, 
+  MARGIN = 1, fromLast = FALSE))
+print(count_of_city)
+```
+
+
+```{r Top contributing cities, message = FALSE, warning = FALSE}
+DF_contbr_city <- DF %>% 
+  group_by(contbr_city) %>% 
+  summarise(sum_city = sum(contb_receipt_amt, na.rm=TRUE),
+                              mean_city = mean(contb_receipt_amt), 
+                              n = n())
+DF_contbr_city <- head(arrange(DF_contbr_city,desc(sum_city)), n = 10)
+DF_contbr_city
+```
+
+
+```{r Top contributor cities graph, message= FALSE, warning= FALSE, echo= FALSE}
+plot_contbr_city <- ggplot(DF_contbr_city, aes(x=DF_contbr_city$contbr_city, 
+  y = sum_city/1000)) +
+  geom_bar(stat="identity")+
+  geom_col(inherit.aes = TRUE)+
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+  ylab("Contribution Amount in Dollars (Thousands)") +
+  xlab("Contributor's City")+
+  ggtitle('Contribution by City')
+
+plot_contbr_city
+```
+
+
+Los Angeles is the most contributing city out of all, followed closely by 
+San Francisco. We see that the "amount of contribution" from these 
+cities is more, but is the "count of contributions" also more from these cities.
+Let's see number of contributions per candidate, occupation and city.
+
+Group contribution amount per candidate, per occupation, per city.
+
+
+```{r Count of Contributions, message= FALSE, warning= FALSE}
+options(scipen = 999)
+DF_cand_occu_city_grp <- DF %>% 
+   group_by(.dots=c("cand_nm","contbr_occupation","contbr_city")) %>% 
+   summarise(sum_cand_occu_city=sum(contb_receipt_amt),
+             n = n())
+
+DF_cand_occu_city_grp <- (arrange(DF_cand_occu_city_grp,desc(sum_cand_occu_city)))
+DF_cand_occu_city_grp
+```
+
+
+```{r Graph for grouped data,  message= FALSE, warning= FALSE, echo = FALSE}
+top_candidate <- c("Clinton, Hillary Rodham", 
+                   "Sanders, Bernard", 
+                   "Trump, Donald J.", 
+                   "Cruz, Rafael Edward 'Ted'", 
+                   "Rubio, Marco",
+                   "Bush, Jeb",
+                   "Carson, Benjamin S.",
+                   "Kasich, John R.",
+                   "Fiorina, Carly",
+                   "Paul, Rand")
+top_candidate
+
+top_candidate1 <- c("Clinton, Hillary Rodham", 
+                   "Sanders, Bernard", 
+                   "Trump, Donald J.", 
+                   "Cruz, Rafael Edward 'Ted'", 
+                   "Rubio, Marco")
+
+
+top_occu <- c("RETIRED", 
+              "ATTORNEY", 
+              "NOT EMPLOYED", 
+              "INFORMATION REQUESTED",
+              "HOMEMAKER",
+              "CEO",
+              "PHYSICIAN",
+              "CONSULTANT",
+              "PRESIDENT",
+              "LAWYER")
+top_occu
+
+top_city <- c("LOS ANGELES", 
+              "SAN FRANCISCO", 
+              "SAN DIEGO", 
+              "PALO ALTO", 
+              "OAKLAND",
+              "BEVERLY HILLS",
+              "BERKELEY",
+              "SANTA MONICA",
+              "SAN JOSE",
+              "SACRAMENTO")
+top_city
+
+plot_count_cand <- ggplot(DF_cand_occu_city_grp, 
+  aes(x=as.factor(DF_cand_occu_city_grp$cand_nm), y = n)) +
+  geom_bar(stat="identity")+
+  geom_col(inherit.aes = TRUE)+
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+  scale_x_discrete(limits = c(top_candidate), breaks = c(top_candidate))+
+  ylab("Contribution count per Candidate") +
+  xlab("Candidate Name")+
+  ggtitle('Number of Contributions Received by Candidate')
+
+plot_count_cand
+
+
+plot_count_occu <- ggplot(DF_cand_occu_city_grp, 
+  aes(x=as.factor(DF_cand_occu_city_grp$contbr_occupation), y = n)) +
+  geom_bar(stat="identity")+
+  geom_col(inherit.aes = TRUE)+
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+  scale_x_discrete(limits = c(top_occu), breaks = c(top_occu))+
+  ylab("Count of Contributions per Occupation") +
+  xlab("Contributor's Occupation")+
+  ggtitle('Number of Contributions Received by Occupation')
+
+plot_count_occu
+
+
+plot_count_city <- ggplot(DF_cand_occu_city_grp, 
+  aes(x=as.factor(DF_cand_occu_city_grp$contbr_city), y = n)) +
+  geom_bar(stat="identity")+
+  geom_col(inherit.aes = TRUE)+
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+  scale_x_discrete(limits = c(top_city), breaks = c(top_city))+
+  ylab("Contribution count per City") +
+  xlab("Contributor's City")+
+  ggtitle('Number of Contributions Received by City')
+  
+plot_count_city
+```
+
+
+In the above graph the occupation categories are placed as per the amount of 
+donations they have made.
+The most significant observation is between "Attorney" and  "Not Employed". 
+We see, that though more number of "Not Employed" people have donated but there 
+amount of contribution was less than the amount of contributions done by 
+category "Attorney".
+
+On the contribution city graph also the cities are arranged in the descending
+order of their amount of contributions done.
+The most significant point is where amount of contributions done by city 
+"Palo Alto" is more than "Oakland", but here in the graph the number of 
+contributions done by city of "Palo Alto" is much lesser than "Oakland".
+
+This may suggest that more financially sound people stay in "Palo Alto".
+
+
+```{r Correlation, message= FALSE, warning= FALSE, results="hide"}
+
+with(DF, cor(contb_receipt_amt, rank(cand_nm)))
+with(DF, cor(contb_receipt_amt, rank(contbr_occupation)))
+with(DF, cor(contb_receipt_amt, rank(contbr_city)))
+
+with(DF, cor(rank(cand_nm), rank(contbr_occupation)))
+with(DF, cor(rank(cand_nm), rank(contbr_city)))
+with(DF, cor(rank(contbr_occupation), rank(contbr_city)))
+
+with(DF_cand_occu_city_grp, cor(sum_cand_occu_city, n))
+```
+
+
+There doesn't seem to be much correlation between candidate name and 
+contributor city, or between contributor city and occupation.
+One thing that shows a strong uphill correlation is sum of contrubition amount 
+and the number of contributions.
+That is more the  "number of contributions" per candidate, per occupation, 
+per city , more is the value of contribution.
+
+
+```{r Retired per city LA, message=FALSE, warning=FALSE, echo = FALSE, results="hide"}
+# What occupation does people have mostly as per most contributing city
+retired_count_total = length(which(DF$contbr_occupation == "RETIRED")) 
+print(retired_count_total)
+
+total = 1304346
+percentage_of_retired_total = (retired_count_total/total)*100
+print(percentage_of_retired_total)
+
+retired_count_LA = length(which(DF$contbr_occupation == "RETIRED" & 
+                          DF$contbr_city == "LOS ANGELES")) 
+print(retired_count_LA)
+total_LA = length(which(DF$contbr_city == "LOS ANGELES")) 
+print(total_LA)
+percentage_retired_LA = (retired_count_LA/total_LA)*100
+print(percentage_retired_LA)
+
+```
+
+Percentage of "Retired" category of the total contributors is 20%. That is 
+almost 1/5th of the total contributors are Retired Category.
+
+Let's check the retired percentage for Los Angeles and San Francisco.
+
+We calculated that, roughly 10% of all the contributors from Los Angeles are of "Retired" 
+category. This is half of total percentage.
+
+
+```{r Retired per city SF, message=FALSE, warning=FALSE, echo = FALSE, results="hide"}
+retired_count_SF = length(which(DF$contbr_occupation == "RETIRED" & 
+                          DF$contbr_city == "SAN FRANCISCO")) 
+print(retired_count_SF)
+total_SF = length(which(DF$contbr_city == "SAN FRANCISCO")) 
+print(total_SF)
+percentage_retired_SF = (retired_count_SF/total_SF)*100
+print(percentage_retired_SF)
+```
+
+
+Similar to Los Angeles, from San Francisco also 10% of all the contributors 
+are of "Retired" category. This data shows the percentage of "Retired" category
+contributors is quite significant in other cities also, and not in LA and 
+SF only.
+
+# Bivariate Analyasis
+
+For the bivariate analysis I saw how the total contribution amount is 
+distributed w.r.t following factors.
+
+- Candidates
+- Political Party
+- Contributor's Occupation
+- Contributor's City
+- Election Type
+
+There is no mention of political party in the dataset, this was added to the
+dataset.
+I added the column political_party and filled the column with corresponding 
+party name for each candidate's political party. Used website 
+http://www.politifact.com/ to get info on 25 unique candidates.
+I found that 25 candidates belonged to 4 different political parties, namely
+
+- Democratic Party
+- Republic Party
+- Libretarian Party
+- Green Party of USA
+
+Hillary Clinton received the most contribution. 
+That also reflected in the political party she represented.
+Democratic party received the most contribution almost 75% of the total 
+contributed amount. 
+Retired people contributed the most 
+Most contributing cities were Los Angeles and San Francisco.
+Most of the contributions were made for primary election.
+
+
+# Multivariate Plot Section
+
+Let's plot a map diagram, to see location of the most contributing cities,
+on the California map.
+
+
+```{r city_map, message=FALSE, warning=FALSE, echo = FALSE}
+DF_contbr_city_20 <- DF %>% 
+  group_by(contbr_city) %>% 
+  summarise(sum_city = sum(contb_receipt_amt, na.rm=TRUE),
+                              mean_amt_per_city = mean(contb_receipt_amt), 
+                              n = n())
+DF_contbr_city_20 <- head(arrange(DF_contbr_city_20,desc(sum_city)), n = 20)
+
+DF_contbr_city_20 <- cbind(geocode(as.character(DF_contbr_city_20$contbr_city)), 
+                            DF_contbr_city_20)
+DF_contbr_city_20
+
+city_contb_map <- ggmap(get_map(location = 'California', zoom = 7)) +
+  geom_point(data=DF_contbr_city_20, 
+             aes(x=lon, y=lat, size=n), 
+             color="orange",
+             na.rm = TRUE)+
+             ylab("Latitude") +
+             xlab("Longitude")+
+            ggtitle('Contribution by top Cities')
+city_contb_map
+```
+
+
+In the above graph, size of the orange dot specifies the count of contribution.
+
+Let's plot some heat maps, to see the multivariate effect on the contributions.
+We will see contributions for candidates w..r.t cities and occupations.  So far 
+we know most contributing occupation, but we will see most contributing 
+occupation per city through some heat maps.
+
+
+
+```{r heat_map1, message=FALSE, warning=FALSE, echo = FALSE}
+# HeatMap 1 - cand-city-contribution
+options(scipen = 999)
+DF_cand_city_grp <- DF %>% 
+   group_by(.dots=c("cand_nm","contbr_city")) %>% 
+   summarise(sum_cand_city=sum(contb_receipt_amt),
+             n = n())
+
+DF_cand_city_grp <- (arrange(DF_cand_city_grp,desc(sum_cand_city)))
+DF_cand_city_grp
+
+group = c(DF_cand_city_grp$cand_nm)
+pos = c(DF_cand_city_grp$contbr_city)
+color = c(DF_cand_city_grp$n)
+df = data.frame(group, pos, color)
+ggplot(data = df, aes(x = group, y = pos)) + 
+          geom_tile(aes(fill = color))+
+          scale_x_discrete(limits = c(top_candidate), breaks = c(top_candidate))+
+          scale_y_discrete(limits = c(top_city), breaks = c(top_city))+
+          theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+          theme(axis.text.y=element_text(hjust=1,vjust=1))+
+          xlab("Candidate Name")+
+          ylab("Contributor's city") +
+          ggtitle('Contribution Received by Candidates per city')+
+          scale_fill_gradient(low="pink", high="blue")
+```
+
+
+
+```{r heat_map2, message=FALSE, warning=FALSE, echo = FALSE}
+# HeatMap 2 - cand-occu-contribution
+DF_cand_occu_grp <- DF %>% 
+   group_by(.dots=c("cand_nm","contbr_occupation")) %>% 
+   summarise(sum_cand_occu=sum(contb_receipt_amt),
+             n = n())
+DF_cand_occu_grp <- (arrange(DF_cand_occu_grp,desc(sum_cand_occu)))
+DF_cand_occu_grp
+
+group = c(DF_cand_occu_grp$cand_nm)
+pos = c(DF_cand_occu_grp$contbr_occupation)
+color = c(DF_cand_occu_grp$n)
+df = data.frame(group, pos, color)
+ggplot(data = df, aes(x = group, y = pos)) + 
+          geom_tile(aes(fill = color))+
+          scale_x_discrete(limits = c(top_candidate), breaks = c(top_candidate))+
+          scale_y_discrete(limits = c(top_occu), breaks = c(top_occu))+
+          theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+          theme(axis.text.y=element_text(hjust=1,vjust=1))+
+          ylab("Contributor's Occupation") +
+          xlab("Candidate Name")+
+          ggtitle('Contribution Received by Candidate per Occupation')+
+          scale_fill_gradient(low="pink", high="blue")
+```
+
+
+
+```{r heat_map3, message=FALSE, warning=FALSE, echo = FALSE}
+# HeatMap 3 - occu-city-contribution
+DF_occu_city_grp <- DF %>% 
+   group_by(.dots=c("contbr_occupation","contbr_city")) %>% 
+   summarise(sum_cand_occu=sum(contb_receipt_amt),
+             n = n())
+DF_occu_city_grp <- (arrange(DF_occu_city_grp,desc(sum_cand_occu)))
+DF_occu_city_grp
+
+group = c(DF_occu_city_grp$contbr_occupation)
+pos = c(DF_occu_city_grp$contbr_city)
+color = c(DF_occu_city_grp$n)
+df = data.frame(group, pos, color)
+ggplot(data = df, aes(x = group, y = pos)) + 
+          geom_tile(aes(fill = color))+
+          scale_x_discrete(limits = c(top_occu), breaks = c(top_occu))+
+          scale_y_discrete(limits = c(top_city), breaks = c(top_city))+
+          theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+          theme(axis.text.y=element_text(hjust=1,vjust=1))+
+          xlab("Contributor's Occupation")+
+          ylab("Contributor's City") +
+          ggtitle('Contribution Received by City per Occupation')+
+          scale_fill_gradient(low="pink", high="blue")
+```
+
+
+The above heatmaps show, Hillary having good number of contributions from
+Los Angeles and San Francisco. Only top two candidates have more than 2000,
+contributions from most of the cities, rest of the candidates have less than 
+2000 contributions, across all cities.
+
+On the occupation wise map also Hillary has got contributions across all
+occupations.
+
+"Not Employed" category of people have contributed most to Bernard Sanders.
+
+
+```{r time_series, message=FALSE, warning=FALSE, echo = FALSE}
+
+DF_cand_month_grp <- DF %>% 
+  group_by(cand_nm, yyyymm) %>% 
+  summarise(sum_contb_cand_month = sum(contb_receipt_amt, na.rm=TRUE),
+  mean_occu = mean(contb_receipt_amt),
+  n = n())
+
+plot_cand_dt_amt_time_series <- ggplot(data=DF_cand_month_grp[!is.na(DF_cand_month_grp$sum_contb_cand_month),],
+    aes(x = yyyymm, y = sum_contb_cand_month/1000, color = cand_nm)) +
+    geom_path()+
+    geom_line()+
+    geom_point()+
+    xlab('Date in yyyymm') +
+    ylab('Contribution Amount in Dollars (Thousands)') +
+    theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+    ggtitle('Time Series of Contribution Amount by Candidate')
+
+plot_cand_dt_amt_time_series
+
+```
+
+
+
+# Multivariate Analysis
+
+We know that Hillary Clinton raised the most money and had the most supporters 
+in California. But is this always true throughout the campaign process? 
+When we look at above 2 graphs, we can notice few things.
+
+Hillary Clinton had most number of contributions throughout.
+Number of contributions for Bernard Sanders rose quite consistently.
+Number of contributions for Donald Trump fell towards the end of campaign.
+Towards the end only Bernard Sanders was in some competition to Hillary Clinton
+in terms of number of contributions.
+
+
+# Final Plots and Summary
+
+
+### Plot One
+
+
+```{r  Final Plot 1 contribution, message = FALSE, warning = FALSE, echo=FALSE}
+options(scipen=999)
+plot_cand_contb= ggplot(aes(x=contb_receipt_amt), data=(DF))+
+  geom_histogram(fill='black') + 
+  scale_x_continuous(limits=c(0, 3000), breaks = c(0, 250, 500, 1000, 1500, 
+  2000, 2500, 3000))+ 
+  scale_y_continuous(limits = c(0, 225000),
+                     breaks = c(100000, 200000,300000)) + 
+  labs(title="Contribution Distribution") +
+  xlab("Contribution Amount in Dollars (Thousands)") +
+  ylab("Number of Contributions")
+
+plot_cand_contb
+```
+
+
+### Plot One description
+
+This graph shows the count of contributions for each range of amount. 
+Large number of people have made small donations between 0 to 250 dollars. 
+Many contributions are done for the amount of 500, 1000 and 2700 Dollars.
+From the summary we saw that mean contribution amount is 116 Dollars. 
+This can be seen on the graph.
+
+
+### Plot Two
+
+
+```{r Final plot 2 candidate, message = FALSE, warning = FALSE, echo = FALSE}
+plot_cand_dist <- ggplot(DF_cand_dist, aes(x=DF_cand_dist$cand_nm, 
+  y = candidate_amt/1000)) +
+  geom_col(inherit.aes = TRUE)+
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+  ylab("Contribution Amount in Dollars (Thousands)") +
+  xlab("Candidate Names")+
+  ggtitle('Contribution Received by Candidate')
+
+plot_cand_dist
+```
+
+
+### Plot Two description
+
+Hillary Clinton was the top candidate in terms of contibutions recieved. Her 
+share of contribution was highest from the begin of primary election too. 
+This graph answers my question that I thought of at the beginning of my 
+exploration.
+
+
+### Plot Three
+
+
+```{r Final plot 3 Occupation, message = FALSE, warning = FALSE, echo=FALSE}
+plot_occu_dist <- ggplot(DF_occu_dist, aes(x=DF_occu_dist$contbr_occupation, y =                  sum_occup/1000)) +
+  geom_bar(stat="identity")+
+  geom_col(inherit.aes = TRUE)+
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))+
+  ylab("Contribution Amount in Dollars (Thousands)") +
+  xlab("Contributor's Occupation")+
+  ggtitle('Contribution by Occupation')
+  
+plot_occu_dist
+```
+
+
+### Plot Three description
+
+This was one of the most interesting graph. Retired people contributed most to 
+the 2016 election. We had also known that Los Angeles was the most contributing 
+city. Does this mean that most of the retired category people stay at LA? This 
+may not be a direct correlation, but something that can be explored. Also 
+another correlation that can be thought of is that did Hillary receive most 
+contribution from "Retired" category of people? 
+
+
+# Reflection
+
+This was a large dataset with more than a million and a quarter observations, 
+which had details about the contributions made to political candidates during 
+the 2016 US Presidential elections.
+
+I was most interested to see which political party received the most funds. 
+There was no political party column in the given dataset. I found the unique 
+candidate names first and then searched for their parties, to finally see the 
+pie chart for party wise funding. For the purpose of seeing the trend of 
+contributions, on a time series, I had added two columns Month_Yr, and yyyymm.
+
+The dataset was not a perfect clean data. I was getting parsing error while 
+creating the dataframe. I found out that there was a extra comma character at 
+the end of the last column, which was removed for successful parsing of csv file
+. Also there were 7 columns where the zip code was non integer, example N4W2T. 
+I found out that this zipcode belonged to Canada, and not California, USA. 
+Such records were replaced by '000000000' value.
+
+The most difficult decision for me was to handle the negative amount values. 
+I did not want to ignore them initially. But after the entire exploration 
+I realize that probably ignoring those values was a better choice. 
+By the description it shows that, it is the contribution money to be refunded. 
+It may not have reached the candidate/party at all. It was marked as negative, 
+to be actually ignored.
+
+For the future exploration I would like to see number of contributions and their 
+respective contributors for large contribution amounts, above a certain average.
+
+I could see total number of contributors per candidate, would like to see the 
+data of number of contributors per candidate per city per occupation in one 
+graph. I couldn't achieve more than 2 group by in one single graph.
+
+During explortion I realized that most of the data in this dataset is 
+categorical, except one continuous data that is "Contribution Amount". 
+Rest most of the variables, that is candidate name, contributor occupation, 
+contributor city, election type etc were discrete data points. 
+So I have mostly plotted bar charts, and not scatter plots or line charts.
+
